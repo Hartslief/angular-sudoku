@@ -1,0 +1,87 @@
+.game {
+  width: min(92vw, 440px);
+  margin: 32px auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-family: system-ui, sans-serif;
+}
+.stats {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+}
+.error {
+  color: #a5402a;
+}
+.solved {
+  color: #3c6e63;
+  font-weight: 600;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  aspect-ratio: 1 / 1;
+  border: 2px solid #222;
+}
+.cell {
+  border: 1px solid #ccc;
+  background: #fff;
+  font-size: clamp(14px, 4vw, 18px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.cell.given {
+  font-weight: 700;
+}
+.cell.selected {
+  background: #f0dcb8;
+}
+.cell.highlight {
+  background: #f7f4ee;
+}
+.cell.invalid {
+  color: #a5402a;
+  background: #f6e2dc;
+}
+.cell.correct {
+  color: #3c6e63;
+  background: #e1f2e9;
+}
+.cell.border-right {
+  border-right: 2px solid #222;
+}
+.cell.border-bottom {
+  border-bottom: 2px solid #222;
+}
+.board.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.numpad {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+.numpad button {
+  padding: 10px 0;
+  cursor: pointer;
+}
+.numpad .erase {
+  grid-column: span 2;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+.actions button {
+  flex: 1;
+  padding: 10px 0;
+  cursor: pointer;
+}

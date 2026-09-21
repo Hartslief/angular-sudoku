@@ -1,0 +1,56 @@
+<div class="game">
+  <div class="stats">
+    <span>Score: {{ score() }}</span>
+    <span>Mistakes: {{ mistakes() }}</span>
+  </div>
+
+  @if (errorMessage()) {
+    <p class="error">{{ errorMessage() }}</p>
+  }
+  @if (solved()) {
+    <p class="solved">Solved!</p>
+  }
+
+  <div class="board" [class.loading]="loading()">
+    @for (row of rows; track row) {
+      @for (col of cols; track col) {
+        <button
+          type="button"
+          class="cell"
+          [class.given]="isGiven(row, col)"
+          [class.selected]="isSelected(row, col)"
+          [class.highlight]="isInSelectedLine(row, col) && !isSelected(row, col)"
+          [class.invalid]="isInvalid(row, col)"
+          [class.correct]="isCorrect(row, col)"
+          [class.border-right]="col === 2 || col === 5"
+          [class.border-bottom]="row === 2 || row === 5"
+          [disabled]="isGiven(row, col) || loading()"
+          (click)="selectCell(row, col)"
+        >
+          @if (board()[row][col] !== 0) {
+            {{ board()[row][col] }}
+          }
+        </button>
+      }
+    }
+  </div>
+
+  <div class="numpad">
+    @for (digit of digits; track digit) {
+      <button [disabled]="!selected() || loading() || solved()" (click)="enterDigit(digit)">
+        {{ digit }}
+      </button>
+    }
+    <button
+      class="erase"
+      [disabled]="!selected() || loading() || solved()"
+      (click)="eraseSelected()"
+    >
+      Erase
+    </button>
+  </div>
+
+  <div class="actions">
+    <button [disabled]="loading()" (click)="newGame()">New game</button>
+  </div>
+</div>
