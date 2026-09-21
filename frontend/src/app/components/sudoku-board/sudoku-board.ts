@@ -1,271 +1,515 @@
 import { Component, inject, signal } from '@angular/core';
 import { Sudoku, SudokuGame } from '../../services/sudoku';
 
+// Represents the position of a cell on the Sudoku board.
 interface Cell {
   row: number;
   col: number;
 }
 
 @Component({
+  // HTML element used to display this component.
   selector: 'app-sudoku-board',
+
+  // HTML template used by the component.
   templateUrl: './sudoku-board.html',
+
+  // CSS file used by the component.
   styleUrl: './sudoku-board.css',
 })
 export class SudokuBoard {
+  // Inject the Sudoku service so the component can communicate
+  // with the backend API.
   private sudoku = inject(Sudoku);
 
-  // Not a signal: never read from the template, only used internally to
-  // tag outgoing requests to the current game. No need for it to trigger
-  // change detection.
+  /*
+    Stores the ID of the current Sudoku game.
+
+    This does not need to be a signal because the template never
+    reads it directly. It is only needed internally when sending
+    validation requests to the backend.
+  */
   gameId: string | null = null;
 
-  // Core board state. All of these are signals (rather than plain fields)
-  // because Angular is zoneless — the view only re-renders when a signal
-  // changes, an @Input updates, or an async pipe emits, so state that's
-  // read in the template has to live in a signal.
+  /*
+    Stores the current Sudoku board.
+
+    A signal is used because the board is displayed in the template.
+    When the signal changes, Angular updates the relevant parts
+    of the UI.
+  */
   board = signal<number[][]>(this.emptyBoard());
 
-  // Marks which cells came from the original puzzle vs. were entered by
-  // the player, so given cells can be locked/styled differently.
+  /*
+    Stores which cells were part of the original puzzle.
+
+    True = original puzzle value / cannot be changed.
+    False = empty cell or value entered by the player.
+  */
   given = signal<boolean[][]>(this.emptyBoard().map((row) => row.map(() => false)));
 
-  // Currently selected cell (null when nothing is selected). Cleared
-  // whenever a new game loads.
+  /*
+    Stores the cell currently selected by the player.
+
+    null means that no cell is currently selected.
+  */
   selected = signal<Cell | null>(null);
 
-  // Cell coordinates (as "row-col" strings) currently flagged as wrong,
-  // and separately as confirmed correct. Kept as two sets rather than one
-  // enum-per-cell grid for cheap add/remove without touching the whole
-  // grid, and because a cell can be in neither set (untouched/erased).
+  /*
+    Stores the positions of cells that contain incorrect values.
+
+    The position is stored as a string such as "2-5",
+    representing row 2, column 5.
+  */
   invalidCells = signal(new Set<string>());
+
+  /*
+    Stores the positions of cells that have been confirmed
+    as correct by the backend.
+  */
   correctCells = signal(new Set<string>());
 
+  // Current player score.
   score = signal(0);
+
+  // Number of incorrect moves made by the player.
   mistakes = signal(0);
 
-  // Disables input and dims the board while a request is in flight.
+  /*
+    True while waiting for a backend request to finish.
+
+    This is used to temporarily disable user interaction.
+  */
   loading = signal(false);
+
+  // Stores an error message that can be displayed to the player.
   errorMessage = signal<string | null>(null);
 
-  // True once the backend reports the puzzle is fully and correctly filled.
+  /*
+    Becomes true when the backend confirms that the puzzle
+    has been completely solved.
+  */
   solved = signal(false);
 
-  // Static lookup arrays for the template's @for loops — 0-8 for rows/cols
-  // and 1-9 for the number pad. Computed once since the board size never
-  // changes.
+  /*
+    Array containing the indexes of all 9 rows.
+
+    Used by the @for loop in the HTML template.
+  */
   readonly rows = Array.from({ length: 9 }, (_, i) => i);
+
+  /*
+    Array containing the indexes of all 9 columns.
+  */
   readonly cols = Array.from({ length: 9 }, (_, i) => i);
+
+  /*
+    Numbers displayed on the Sudoku number pad.
+  */
   readonly digits = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
-  // Kick off a game as soon as the component is created so the board
-  // isn't empty on first render.
+  /*
+    Runs automatically when the component is created.
+
+    Starting a new game here means the player immediately gets
+    a Sudoku puzzle when the component loads.
+  */
   constructor() {
     this.newGame();
   }
 
-  // Fetches a fresh puzzle from the backend and resets all per-game state
-  // (board, marks, score, mistakes, solved) to match it.
+  /*
+    Requests a new Sudoku puzzle from the backend.
+
+    It also resets the state from the previous game.
+  */
   newGame(): void {
-    // Reset all per-game state before the request resolves, so the UI
-    // immediately reflects "starting over" rather than showing stale
-    // data from the previous game while waiting on the network.
+    // Tell the UI that a request is currently in progress.
     this.loading.set(true);
+
+    // Remove any previous error message.
     this.errorMessage.set(null);
+
+    // A new game cannot be solved yet.
     this.solved.set(false);
+
+    // Request a new game from the backend.
     this.sudoku.getNewGame().subscribe({
+      /*
+        Runs when the backend successfully returns a new game.
+      */
       next: (game: SudokuGame) => {
+        // Save the new game's ID for future validation requests.
         this.gameId = game.game_id;
-        // Copy the board/given arrays (map + spread) rather than storing
-        // the response arrays directly, so later in-place-looking updates
-        // never accidentally mutate a reference shared with anything else.
+
+        /*
+          Copy the board returned by the backend.
+
+          Creating new arrays prevents us from accidentally changing
+          the original response data when modifying the board later.
+        */
         this.board.set(game.board.map((row) => [...row]));
-        // A cell counts as "given" if the server sent a non-zero value for
-        // it — those cells are part of the original puzzle and are locked.
+
+        /*
+          Determine which cells are original puzzle values.
+
+          A non-zero value means the backend provided that number
+          as part of the starting puzzle.
+        */
         this.given.set(game.board.map((row) => row.map((v) => v !== 0)));
+
+        // Set the initial score returned by the backend.
         this.score.set(game.score);
+
+        // Set the initial mistake count returned by the backend.
         this.mistakes.set(game.mistakes);
+
+        // No cell should be selected when a new game starts.
         this.selected.set(null);
+
+        // Remove all incorrect cell markings.
         this.invalidCells.set(new Set());
+
+        // Remove all correct cell markings.
         this.correctCells.set(new Set());
+
+        // The request has finished.
         this.loading.set(false);
       },
+
+      /*
+        Runs if the request fails.
+      */
       error: (error) => {
+        // Log the actual error to the browser console for debugging.
         console.error('Angular HTTP error:', error);
+
+        // Allow the player to interact with the UI again.
         this.loading.set(false);
+
+        // Show a user-friendly error message.
         this.errorMessage.set("Couldn't start a new game. Check that the backend is running.");
       },
     });
   }
 
-  // Selects a cell so the number pad / erase actions apply to it. Given
-  // (puzzle) cells can't be selected since they can't be edited.
+  /*
+    Selects a Sudoku cell.
+
+    Original puzzle cells cannot be selected because they cannot
+    be changed by the player.
+  */
   selectCell(row: number, col: number): void {
+    // Do nothing if this is an original puzzle cell.
     if (this.given()[row][col]) return;
+
+    // Store the selected cell.
     this.selected.set({ row, col });
   }
 
-  // True if this cell was part of the original puzzle (locked, not
-  // player-editable).
+  /*
+    Returns true when the specified cell was part of the
+    original Sudoku puzzle.
+  */
   isGiven(row: number, col: number): boolean {
     return this.given()[row][col];
   }
 
-  // True if this cell is the currently selected one.
+  /*
+    Returns true when the specified cell is currently selected.
+  */
   isSelected(row: number, col: number): boolean {
+    // Get the currently selected cell.
     const sel = this.selected();
+
+    // Make sure a cell is selected and compare its coordinates.
     return !!sel && sel.row === row && sel.col === col;
   }
 
-  // True if this cell shares a row, column, or 3x3 box with the selected
-  // cell — used to highlight the selected cell's row/column/box, a
-  // standard Sudoku visual aid for spotting conflicts at a glance.
+  /*
+    Returns true when a cell shares a row, column, or 3x3 box
+    with the currently selected cell.
+
+    This allows the UI to highlight the relevant area of the board.
+  */
   isInSelectedLine(row: number, col: number): boolean {
+    // Get the currently selected cell.
     const sel = this.selected();
+
+    // Nothing should be highlighted when no cell is selected.
     if (!sel) return false;
+
+    /*
+      Calculate whether the current cell and selected cell
+      belong to the same 3x3 Sudoku box.
+    */
     const sameBox =
       Math.floor(sel.row / 3) === Math.floor(row / 3) &&
       Math.floor(sel.col / 3) === Math.floor(col / 3);
+
+    /*
+      Return true when the cells share:
+      - the same row
+      - the same column
+      - the same 3x3 box
+    */
     return sel.row === row || sel.col === col || sameBox;
   }
 
-  // True if this cell's current value has been flagged as incorrect by
-  // the backend.
+  /*
+    Checks whether a cell has been marked as invalid.
+  */
   isInvalid(row: number, col: number): boolean {
     return this.invalidCells().has(this.cellKey(row, col));
   }
 
-  // True if this cell's current value has been confirmed correct by the
-  // backend.
+  /*
+    Checks whether a cell has been confirmed as correct.
+  */
   isCorrect(row: number, col: number): boolean {
     return this.correctCells().has(this.cellKey(row, col));
   }
 
-  // Enters a digit into the selected cell, optimistically updates the
-  // board locally, then asks the backend to validate the move and marks
-  // the cell correct/invalid (and checks for a win) based on the response.
+  /*
+    Enters a number into the selected cell.
+
+    The value is first displayed immediately on the board,
+    then the backend is asked whether the move is correct.
+  */
   enterDigit(value: number): void {
+    // Get the currently selected cell.
     const sel = this.selected();
-    // Guard against entering digits with nothing selected, mid-request,
-    // or after the puzzle is already solved.
+
+    /*
+      Stop if:
+      - no cell is selected
+      - a request is already running
+      - the puzzle has already been solved
+    */
     if (!sel || this.loading() || this.solved()) return;
+
+    // Extract the row and column from the selected cell.
     const { row, col } = sel;
+
+    // Original puzzle cells cannot be edited.
     if (this.given()[row][col]) return;
+
+    // Create a unique key for this cell.
     const key = this.cellKey(row, col);
 
-    // Update the board optimistically so the digit appears immediately,
-    // before the backend confirms whether it's correct.
+    /*
+      Update the board immediately.
+
+      The board is copied first so that we create a new array
+      instead of modifying the existing signal value directly.
+    */
     this.board.update((b) => {
       const next = b.map((r) => [...r]);
       next[row][col] = value;
       return next;
     });
-    // Clear any previous correct/invalid marking on this cell — it's
-    // about to be re-evaluated by the backend.
+
+    // Remove any previous correct/incorrect state for this cell.
+    // The new value needs to be checked again.
     this.clearCellMarks(key);
 
-    // Without a game_id there's no game to validate against (shouldn't
-    // normally happen once newGame() has resolved, but guards against a
-    // race where the user interacts before the initial load finishes).
+    /*
+      Make sure a game ID exists before attempting validation.
+
+      Normally this will already exist because newGame() runs when
+      the component starts.
+    */
     if (!this.gameId) return;
 
+    /*
+      Send the player's move to the backend for validation.
+    */
     this.sudoku.validate(this.gameId, row, col, value).subscribe({
+      /*
+        Runs when the backend successfully responds.
+      */
       next: (res) => {
-        // Structural errors (bad game_id, out-of-bounds cell, locked
-        // cell, etc.) come back with no score/mistakes/valid fields at
-        // all — surface the message and stop rather than misreading
-        // undefined values as valid state.
+        /*
+          If the backend reports an error, display it and stop.
+        */
         if (res.error) {
           this.errorMessage.set(res.error);
           return;
         }
-        // Only overwrite score/mistakes when the backend actually sent
-        // them, so a partial response can't wipe out known-good state.
-        if (res.mistakes !== undefined) this.mistakes.set(res.mistakes);
-        if (res.score !== undefined) this.score.set(res.score);
 
+        /*
+          Only update mistakes when the backend actually included
+          a mistakes value in its response.
+        */
+        if (res.mistakes !== undefined) {
+          this.mistakes.set(res.mistakes);
+        }
+
+        /*
+          Only update score when the backend actually included
+          a score value in its response.
+        */
+        if (res.score !== undefined) {
+          this.score.set(res.score);
+        }
+
+        /*
+          The backend confirmed that the entered number is correct.
+        */
         if (res.valid) {
+          // Mark the cell as correct.
           this.markCorrect(key);
-          // "complete" is the backend's authoritative signal that every
-          // cell is filled correctly — the win condition.
-          if (res.complete) this.solved.set(true);
+
+          /*
+            If the backend says the entire puzzle is complete,
+            mark the game as solved.
+          */
+          if (res.complete) {
+            this.solved.set(true);
+          }
         } else {
+          // The backend says the entered number is incorrect.
           this.markInvalid(key);
         }
       },
+
+      /*
+        Runs if the validation request itself fails.
+      */
       error: () => {
         this.errorMessage.set("Couldn't reach the backend to check that move.");
       },
     });
   }
 
-  // Clears the selected cell's value and marks. Purely client-side (no
-  // backend call), since there's nothing to validate about an empty cell.
+  /*
+    Removes the value from the currently selected cell.
+
+    Erasing is handled entirely on the frontend because there is
+    no number that needs to be validated by the backend.
+  */
   eraseSelected(): void {
+    // Get the currently selected cell.
     const sel = this.selected();
+
+    // Do nothing if no cell is selected or a request is running.
     if (!sel || this.loading()) return;
+
+    // Extract the selected cell's coordinates.
     const { row, col } = sel;
+
+    // Original puzzle cells cannot be erased.
     if (this.given()[row][col]) return;
+
+    /*
+      Replace the selected cell with 0.
+
+      In this application, 0 represents an empty cell.
+    */
     this.board.update((b) => {
       const next = b.map((r) => [...r]);
       next[row][col] = 0;
       return next;
     });
+
+    // Remove any previous correct/incorrect marking.
     this.clearCellMarks(this.cellKey(row, col));
-    // In case a previous move had triggered a (now stale) solved state,
-    // erasing a cell means the board is no longer complete.
+
+    /*
+      If the puzzle had somehow been marked as solved,
+      erasing a cell means it is no longer solved.
+    */
     this.solved.set(false);
   }
 
-  // Flags a cell as invalid and removes it from the correct set, if
-  // present. Only rebuilds correctCells when the key is actually in it,
-  // to avoid triggering a signal change for a set that doesn't need one.
+  /*
+    Marks a cell as incorrect.
+
+    It also removes the cell from the correct set if it was
+    previously marked as correct.
+  */
   private markInvalid(key: string): void {
+    // Add the cell to the invalid set.
     this.invalidCells.update((set) => new Set(set).add(key));
+
+    /*
+      Remove the cell from the correct set.
+
+      If it isn't there, return the existing set rather than
+      creating a new one unnecessarily.
+    */
     this.correctCells.update((set) => {
       if (!set.has(key)) return set;
+
       const next = new Set(set);
       next.delete(key);
       return next;
     });
   }
 
-  // Flags a cell as correct and removes it from the invalid set, if
-  // present. Mirrors markInvalid but in the opposite direction.
+  /*
+    Marks a cell as correct.
+
+    It also removes the cell from the invalid set if necessary.
+  */
   private markCorrect(key: string): void {
+    // Add the cell to the correct set.
     this.correctCells.update((set) => new Set(set).add(key));
+
+    // Remove the cell from the invalid set.
     this.invalidCells.update((set) => {
       if (!set.has(key)) return set;
+
       const next = new Set(set);
       next.delete(key);
       return next;
     });
   }
 
-  // Removes a cell from both the invalid and correct sets — used before
-  // re-evaluating a cell (new digit entered) or when it's erased.
+  /*
+    Removes a cell from both the correct and invalid sets.
+
+    This is used when a player enters a new value or erases a value.
+  */
   private clearCellMarks(key: string): void {
+    // Remove the cell from the invalid set if it exists.
     this.invalidCells.update((set) => {
       if (!set.has(key)) return set;
+
       const next = new Set(set);
       next.delete(key);
       return next;
     });
+
+    // Remove the cell from the correct set if it exists.
     this.correctCells.update((set) => {
       if (!set.has(key)) return set;
+
       const next = new Set(set);
       next.delete(key);
       return next;
     });
   }
 
-  // String key ("row-col") used to index into the invalid/correct sets,
-  // since Set can't do structural equality on {row, col} objects.
+  /*
+    Creates a unique string for a cell using its row and column.
+
+    Example:
+    row = 2, col = 5
+    key = "2-5"
+
+    This is useful because JavaScript Sets compare objects by
+    reference rather than by their contents.
+  */
   private cellKey(row: number, col: number): string {
     return `${row}-${col}`;
   }
 
-  // Builds a fresh 9x9 grid of zeros, used both as the initial board/given
-  // state and as a template for resetting per-game arrays.
+  /*
+    Creates a completely empty 9x9 Sudoku board.
+
+    Each cell starts with 0, which represents an empty cell.
+  */
   private emptyBoard(): number[][] {
     return Array.from({ length: 9 }, () => Array(9).fill(0));
   }
