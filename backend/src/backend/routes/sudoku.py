@@ -1,6 +1,5 @@
 import json
-
-from src.backend.sudoku.game import SudokuGame
+from .sudoku import SudokuGame
 
 # Single shared instance of the game manager for the lifetime of the process.
 # Holds all active games in memory (see SudokuGame.games), so every request

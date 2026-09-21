@@ -1,5 +1,4 @@
 <div class="game">
-
   <!-- Displays the player's current score and number of mistakes -->
   <div class="stats">
     <span>Score: {{ score() }}</span>
@@ -23,13 +22,10 @@
     which allows the CSS to visually indicate that the board is busy.
   -->
   <div class="board" [class.loading]="loading()">
-
     <!-- Loop through each of the 9 rows -->
     @for (row of rows; track row) {
-
       <!-- Loop through each of the 9 columns in the current row -->
       @for (col of cols; track col) {
-
         <!--
           Each Sudoku cell is a button so the player can click it
           to select the cell.
@@ -37,41 +33,16 @@
         <button
           type="button"
           class="cell"
-
-          <!-- True when the cell was part of the original puzzle -->
           [class.given]="isGiven(row, col)"
-
-          <!-- True when this is the currently selected cell -->
           [class.selected]="isSelected(row, col)"
-
-          <!--
-            Highlights cells that share the same row, column,
-            or 3x3 box as the selected cell.
-          -->
           [class.highlight]="isInSelectedLine(row, col) && !isSelected(row, col)"
-
-          <!-- Highlights a cell when the backend says its value is wrong -->
           [class.invalid]="isInvalid(row, col)"
-
-          <!-- Highlights a cell when its value is confirmed correct -->
           [class.correct]="isCorrect(row, col)"
-
-          <!-- Adds the thicker right border after columns 3 and 6 -->
           [class.border-right]="col === 2 || col === 5"
-
-          <!-- Adds the thicker bottom border after rows 3 and 6 -->
           [class.border-bottom]="row === 2 || row === 5"
-
-          <!--
-            Given cells cannot be edited.
-            All cells are also disabled while a request is loading.
-          -->
           [disabled]="isGiven(row, col) || loading()"
-
-          <!-- Select this cell when the player clicks it -->
           (click)="selectCell(row, col)"
         >
-
           <!--
             Only display a number when the cell contains something other
             than 0. A value of 0 represents an empty Sudoku cell.
@@ -79,7 +50,6 @@
           @if (board()[row][col] !== 0) {
             {{ board()[row][col] }}
           }
-
         </button>
       }
     }
@@ -87,13 +57,9 @@
 
   <!-- Number pad used to enter values into the selected cell -->
   <div class="numpad">
-
     <!-- Create a button for each number from 1 to 9 -->
     @for (digit of digits; track digit) {
-      <button
-        [disabled]="!selected() || loading() || solved()"
-        (click)="enterDigit(digit)"
-      >
+      <button [disabled]="!selected() || loading() || solved()" (click)="enterDigit(digit)">
         {{ digit }}
       </button>
     }
@@ -112,14 +78,10 @@
 
   <!-- Game actions such as starting a new game -->
   <div class="actions">
-
     <!--
       The New Game button is disabled while the new game request
       is still being processed.
     -->
-    <button [disabled]="loading()" (click)="newGame()">
-      New game
-    </button>
+    <button [disabled]="loading()" (click)="newGame()">New game</button>
   </div>
-
 </div>
